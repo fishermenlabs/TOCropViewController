@@ -95,6 +95,11 @@
  */
 @property (nonatomic, strong) NSArray *excludedActivityTypes;
 
+/**
+ If 'fixedAspectRatio' is not CGSizeZero, fix aspect ratio and remove toolbar button
+ */
+@property (nonatomic) CGSize fixedAspectRatio;
+
 ///------------------------------------------------
 /// @name Object Creation
 ///------------------------------------------------

@@ -72,6 +72,8 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         
         _transitionController = [[TOCropViewControllerTransitioning alloc] init];
         _image = image;
+        
+        self.fixedAspectRatio = CGSizeZero;
     }
     
     return self;
@@ -102,6 +104,8 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     self.transitioningDelegate = self;
     
     self.view.backgroundColor = self.cropView.backgroundColor;
+    
+    [self checkFixedAspectRatio];
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -242,9 +246,23 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     [self.cropView resetLayoutToDefaultAnimated:YES];
     self.cropView.aspectLockEnabled = NO;
     self.toolbar.clampButtonGlowing = NO;
+    [self checkFixedAspectRatio];
 }
 
 #pragma mark - Aspect Ratio Handling -
+-(void)checkFixedAspectRatio {
+    
+    if (!CGSizeEqualToSize(self.fixedAspectRatio, CGSizeZero)) {
+
+        self.toolbar.clampButtonHidden = YES;
+        [self.cropView setAspectLockEnabledWithAspectRatio:self.fixedAspectRatio animated:NO];
+    }
+    else {
+        self.toolbar.clampButtonHidden = NO;
+        [self.cropView setAspectLockEnabled:NO];
+    }
+}
+
 - (void)showAspectRatioDialog
 {
     if (self.cropView.aspectLockEnabled) {
@@ -328,6 +346,7 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
 - (void)rotateCropView
 {
     [self.cropView rotateImageNinetyDegreesAnimated:YES];
+    [self checkFixedAspectRatio];
 }
 
 #pragma mark - Crop View Delegates -

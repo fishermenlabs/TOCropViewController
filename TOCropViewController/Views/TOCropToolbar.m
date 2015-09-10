@@ -129,6 +129,7 @@
     self.doneTextButton.hidden   = (verticalLayout);
     
     self.rotateButton.hidden = self.rotateButtonHidden;
+    self.clampButton.hidden = self.clampButtonHidden;
     
     if (verticalLayout == NO) {
         CGRect frame = CGRectZero;
@@ -142,6 +143,11 @@
         
         CGRect containerRect = (CGRect){0,0,165.0f,44.0f};
         containerRect.origin.x = (CGRectGetWidth(self.bounds) - (CGRectGetWidth(containerRect))) * 0.5f;
+
+        if (self.clampButtonHidden) {
+            containerRect = (CGRect){0,0,145.0f,44.0f};
+            containerRect.origin.x = (CGRectGetWidth(self.bounds) - (CGRectGetWidth(containerRect))) * 0.5f;
+        }
         
         CGRect buttonFrame = (CGRect){0,0,44.0f,44.0f};
         
@@ -153,8 +159,14 @@
             buttonFrame.origin.x = CGRectGetMinX(containerRect);
             self.rotateButton.frame = buttonFrame;
             
-            buttonFrame.origin.x = CGRectGetMidX(containerRect) -  22.0f;
-            self.resetButton.frame = buttonFrame;
+            if (self.clampButtonHidden) {
+                buttonFrame.origin.x = CGRectGetMaxX(containerRect) -  44.0f;
+                self.resetButton.frame = buttonFrame;
+            }
+            else {
+                buttonFrame.origin.x = CGRectGetMidX(containerRect) -  22.0f;
+                self.resetButton.frame = buttonFrame;
+            }
         }
         
         buttonFrame.origin.x = CGRectGetMaxX(containerRect) - 44.0f;
