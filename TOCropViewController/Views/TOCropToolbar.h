@@ -50,7 +50,6 @@
 @property (nonatomic, assign) BOOL clampButtonHidden;
 @property (nonatomic, assign) BOOL clampButtonGlowing;
 @property (nonatomic, readonly) CGRect clampButtonFrame;
-@property (nonatomic, assign) BOOL clampButtonHidden;
 
 /* Disable the rotate button */
 @property (nonatomic, assign) BOOL rotateButtonHidden;
