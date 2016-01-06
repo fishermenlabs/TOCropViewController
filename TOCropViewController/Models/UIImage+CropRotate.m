@@ -24,6 +24,13 @@
 
 @implementation UIImage (CropRotate)
 
+- (BOOL)hasAlpha
+{
+    CGImageAlphaInfo alphaInfo = CGImageGetAlphaInfo(self.CGImage);
+    return (alphaInfo == kCGImageAlphaFirst || alphaInfo == kCGImageAlphaLast ||
+            alphaInfo == kCGImageAlphaPremultipliedFirst || alphaInfo == kCGImageAlphaPremultipliedLast);
+}
+
 - (UIImage *)croppedImageWithFrame:(CGRect)frame angle:(NSInteger)angle
 {
     @autoreleasepool {

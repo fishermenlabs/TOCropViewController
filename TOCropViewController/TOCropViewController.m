@@ -21,33 +21,24 @@
 //  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #import "TOCropViewController.h"
-#import "TOCropView.h"
-#import "TOCropToolbar.h"
 #import "TOCropViewControllerTransitioning.h"
 #import "TOActivityCroppedImageProvider.h"
 #import "UIImage+CropRotate.h"
 #import "TOCroppedImageAttributes.h"
 
-typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
-    TOCropViewControllerAspectRatioOriginal,
-    TOCropViewControllerAspectRatioSquare,
-    TOCropViewControllerAspectRatio3x2,
-    TOCropViewControllerAspectRatio5x3,
-    TOCropViewControllerAspectRatio4x3,
-    TOCropViewControllerAspectRatio5x4,
-    TOCropViewControllerAspectRatio7x5,
-    TOCropViewControllerAspectRatio16x9
-};
-
 @interface TOCropViewController () <UIActionSheetDelegate, UIViewControllerTransitioningDelegate, TOCropViewDelegate>
 
 @property (nonatomic, readwrite) UIImage *image;
 @property (nonatomic, strong) TOCropToolbar *toolbar;
-@property (nonatomic, strong) TOCropView *cropView;
+@property (nonatomic, strong, readwrite) TOCropView *cropView;
 @property (nonatomic, strong) UIView *snapshotView;
 @property (nonatomic, strong) TOCropViewControllerTransitioning *transitionController;
-@property (nonatomic, strong) UIPopoverController *activityPopoverController;
 @property (nonatomic, assign) BOOL inTransition;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+@property (nonatomic, strong) UIPopoverController *activityPopoverController;
+#pragma clang diagnostic pop
 
 /* Button callback */
 - (void)cancelButtonTapped;
@@ -73,7 +64,8 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         _transitionController = [[TOCropViewControllerTransitioning alloc] init];
         _image = image;
         
-        self.fixedAspectRatio = CGSizeZero;
+        _defaultAspectRatio = TOCropViewControllerAspectRatioOriginal;
+        _lockedAspectRatio = NO;
     }
     
     return self;
@@ -84,13 +76,9 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     [super viewDidLoad];
 
     BOOL landscapeLayout = CGRectGetWidth(self.view.frame) > CGRectGetHeight(self.view.frame);
-    self.cropView = [[TOCropView alloc] initWithImage:self.image];
     self.cropView.frame = (CGRect){(landscapeLayout ? 44.0f : 0.0f),0,(CGRectGetWidth(self.view.bounds) - (landscapeLayout ? 44.0f : 0.0f)), (CGRectGetHeight(self.view.bounds)-(landscapeLayout ? 0.0f : 44.0f)) };
-    self.cropView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.cropView.delegate = self;
     [self.view addSubview:self.cropView];
-    
-    self.toolbar = [[TOCropToolbar alloc] initWithFrame:CGRectZero];
+
     self.toolbar.frame = [self frameForToolBarWithVerticalLayout:CGRectGetWidth(self.view.bounds) < CGRectGetHeight(self.view.bounds)];
     [self.view addSubview:self.toolbar];
     
@@ -104,8 +92,10 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     self.transitioningDelegate = self;
     
     self.view.backgroundColor = self.cropView.backgroundColor;
-    
-    [self checkFixedAspectRatio];
+
+    if (self.defaultAspectRatio != TOCropViewControllerAspectRatioOriginal) {
+        [self setAspectRatio:self.defaultAspectRatio animated:NO];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -124,7 +114,9 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     self.inTransition = NO;
     if (animated && [UIApplication sharedApplication].statusBarHidden == NO) {
         [UIView animateWithDuration:0.3f animations:^{ [self setNeedsStatusBarAppearanceUpdate]; }];
-        [self.cropView setGridOverlayHidden:NO animated:YES];
+        
+        if (self.cropView.gridOverlayHidden)
+            [self.cropView setGridOverlayHidden:NO animated:YES];
     }
 }
 
@@ -200,6 +192,10 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
 }
 
 #pragma mark - Rotation Handling -
+
+//TODO: Deprecate iOS 7 properly at the right time
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
 {
     self.snapshotView = [self.toolbar snapshotViewAfterScreenUpdates:NO];
@@ -240,29 +236,38 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     [self.cropView setSimpleMode:NO animated:YES];
 }
 
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+    CGSize currentSize = self.view.bounds.size;
+    if (currentSize.width < size.width)
+        orientation = UIInterfaceOrientationLandscapeLeft;
+    
+    [self willRotateToInterfaceOrientation:orientation duration:coordinator.transitionDuration];
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self willAnimateRotationToInterfaceOrientation:orientation duration:coordinator.transitionDuration];
+    } completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self didRotateFromInterfaceOrientation:orientation];
+    }];
+}
+#pragma clang diagnostic pop
+
 #pragma mark - Reset -
 - (void)resetCropViewLayout
 {
     [self.cropView resetLayoutToDefaultAnimated:YES];
-    self.cropView.aspectLockEnabled = NO;
-    self.toolbar.clampButtonGlowing = NO;
-    [self checkFixedAspectRatio];
+    
+    if (self.lockedAspectRatio) {
+        [self setAspectRatio:self.defaultAspectRatio animated:NO];
+    } else {
+        self.cropView.aspectLockEnabled = NO;
+        self.toolbar.clampButtonGlowing = NO;
+    }
 }
 
 #pragma mark - Aspect Ratio Handling -
--(void)checkFixedAspectRatio {
-    
-    if (!CGSizeEqualToSize(self.fixedAspectRatio, CGSizeZero)) {
-
-        self.toolbar.clampButtonHidden = YES;
-        [self.cropView setAspectLockEnabledWithAspectRatio:self.fixedAspectRatio animated:NO];
-    }
-    else {
-        self.toolbar.clampButtonHidden = NO;
-        [self.cropView setAspectLockEnabled:NO];
-    }
-}
-
 - (void)showAspectRatioDialog
 {
     if (self.cropView.aspectLockEnabled) {
@@ -271,40 +276,83 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         return;
     }
     
+    //Depending on the shape of the image, work out if horizontal, or vertical options are required
     BOOL verticalCropBox = self.cropView.cropBoxAspectRatioIsPortrait;
-    UIActionSheet *actionSheet = [[UIActionSheet alloc] initWithTitle:nil
-                                                             delegate:self
-                                                    cancelButtonTitle:NSLocalizedStringFromTableInBundle(@"Cancel",
-                                                                                                         @"TOCropViewControllerLocalizable",
-                                                                                                         [NSBundle bundleForClass:[self class]],
-                                                                                                         nil)
-                                               destructiveButtonTitle:nil
-                                                    otherButtonTitles:NSLocalizedStringFromTableInBundle(@"Original",
-                                                                                                         @"TOCropViewControllerLocalizable",
-                                                                                                         [NSBundle bundleForClass:[self class]],
-                                                                                                         nil),
-                                                                      NSLocalizedStringFromTableInBundle(@"Square",
-                                                                                                         @"TOCropViewControllerLocalizable",
-                                                                                                         [NSBundle bundleForClass:[self class]],
-                                                                                                         nil),
-                                                                      verticalCropBox ? @"2:3" : @"3:2",
-                                                                      verticalCropBox ? @"3:5" : @"5:3",
-                                                                      verticalCropBox ? @"3:4" : @"4:3",
-                                                                      verticalCropBox ? @"4:5" : @"5:4",
-                                                                      verticalCropBox ? @"5:7" : @"7:5",
-                                                                      verticalCropBox ? @"9:16" : @"16:9",nil];
     
-    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
-        [actionSheet showFromRect:self.toolbar.clampButtonFrame inView:self.toolbar animated:YES];
-    else
-        [actionSheet showInView:self.view];
+    //Prepare the localized options
+    NSString *cancelButtonTitle = NSLocalizedStringFromTableInBundle(@"Cancel", @"TOCropViewControllerLocalizable", [NSBundle bundleForClass:[self class]], nil);
+    NSString *originalButtonTitle = NSLocalizedStringFromTableInBundle(@"Original", @"TOCropViewControllerLocalizable", [NSBundle bundleForClass:[self class]], nil);
+    NSString *squareButtonTitle = NSLocalizedStringFromTableInBundle(@"Square", @"TOCropViewControllerLocalizable", [NSBundle bundleForClass:[self class]], nil);
+    
+    //Prepare the list that will be fed to the alert view/controller
+    NSMutableArray *items = [NSMutableArray array];
+    [items addObject:originalButtonTitle];
+    [items addObject:squareButtonTitle];
+    if (verticalCropBox) {
+        [items addObjectsFromArray:@[@"2:3", @"3:5", @"3:4", @"4:5", @"5:7", @"9:16"]];
+    }
+    else {
+        [items addObjectsFromArray:@[@"3:2", @"5:3", @"4:3", @"5:4", @"7:5", @"16:9"]];
+    }
+    
+    //Present via a UIAlertController if >= iOS 8
+    if (NSClassFromString(@"UIAlertController")) {
+        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:nil message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+        [alertController addAction:[UIAlertAction actionWithTitle:cancelButtonTitle style:UIAlertActionStyleCancel handler:nil]];
+        
+        //Add each item to the alert controller
+        NSInteger i = 0;
+        for (NSString *item in items) {
+            UIAlertAction *action = [UIAlertAction actionWithTitle:item style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self setAspectRatio:(TOCropViewControllerAspectRatio)i animated:YES];
+            }];
+            [alertController addAction:action];
+            
+            i++;
+        }
+        
+        alertController.modalPresentationStyle = UIModalPresentationPopover;
+        UIPopoverPresentationController *presentationController = [alertController popoverPresentationController];
+        presentationController.sourceView = self.toolbar;
+        presentationController.sourceRect = self.toolbar.clampButtonFrame;
+        [self presentViewController:alertController animated:YES completion:nil];
+    }
+    else {
+    //TODO: Completely overhaul this once iOS 7 support is dropped
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        
+        UIActionSheet *actionSheet = [[UIActionSheet alloc] initWithTitle:nil
+                                                                 delegate:self
+                                                        cancelButtonTitle:cancelButtonTitle
+                                                   destructiveButtonTitle:nil
+                                                        otherButtonTitles:nil];
+        
+        for (NSString *item in items) {
+            [actionSheet addButtonWithTitle:item];
+        }
+        
+        if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad)
+            [actionSheet showFromRect:self.toolbar.clampButtonFrame inView:self.toolbar animated:YES];
+        else
+            [actionSheet showInView:self.view];
+#pragma clang diagnostic pop
+    }
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (void)actionSheet:(UIActionSheet *)actionSheet didDismissWithButtonIndex:(NSInteger)buttonIndex
+{
+    [self setAspectRatio:(TOCropViewControllerAspectRatio)buttonIndex animated:YES];
+}
+#pragma clang diagnostic pop
+
+- (void)setAspectRatio:(TOCropViewControllerAspectRatio)aspectRatioSize animated:(BOOL)animated
 {
     CGSize aspectRatio = CGSizeZero;
     
-    switch (buttonIndex) {
+    switch (aspectRatioSize) {
         case TOCropViewControllerAspectRatioOriginal:
             aspectRatio = CGSizeZero;
             break;
@@ -329,8 +377,6 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         case TOCropViewControllerAspectRatio16x9:
             aspectRatio = CGSizeMake(16.0f, 9.0f);
             break;
-        default:
-            return;
     }
     
     if (self.cropView.cropBoxAspectRatioIsPortrait) {
@@ -339,14 +385,16 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         aspectRatio.height = width;
     }
     
-    [self.cropView setAspectLockEnabledWithAspectRatio:aspectRatio animated:YES];
+    [self.cropView setAspectLockEnabledWithAspectRatio:aspectRatio animated:animated];
     self.toolbar.clampButtonGlowing = YES;
 }
 
 - (void)rotateCropView
 {
     [self.cropView rotateImageNinetyDegreesAnimated:YES];
-    [self checkFixedAspectRatio];
+    if (self.lockedAspectRatio) {
+        [self setAspectRatio:self.defaultAspectRatio animated:NO];
+    }
 }
 
 #pragma mark - Crop View Delegates -
@@ -472,15 +520,25 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
         UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:activityItems applicationActivities:self.applicationActivities];
         activityController.excludedActivityTypes = self.excludedActivityTypes;
         
-        if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) {
+        if (NSClassFromString(@"UIPopoverPresentationController")) {
+            activityController.modalPresentationStyle = UIModalPresentationPopover;
+            activityController.popoverPresentationController.sourceView = self.toolbar;
+            activityController.popoverPresentationController.sourceRect = self.toolbar.doneButtonFrame;
             [self presentViewController:activityController animated:YES completion:nil];
         }
         else {
-            [self.activityPopoverController dismissPopoverAnimated:NO];
-            self.activityPopoverController = [[UIPopoverController alloc] initWithContentViewController:activityController];
-            [self.activityPopoverController presentPopoverFromRect:self.toolbar.doneButtonFrame inView:self.toolbar permittedArrowDirections:UIPopoverArrowDirectionAny animated:YES];
+            if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone) {
+                [self presentViewController:activityController animated:YES completion:nil];
+            }
+            else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                [self.activityPopoverController dismissPopoverAnimated:NO];
+                self.activityPopoverController = [[UIPopoverController alloc] initWithContentViewController:activityController];
+                [self.activityPopoverController presentPopoverFromRect:self.toolbar.doneButtonFrame inView:self.toolbar permittedArrowDirections:UIPopoverArrowDirectionAny animated:YES];
+#pragma clang diagnostic pop
+            }
         }
-        
         __weak typeof(activityController) blockController = activityController;
         #if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_8_0
         activityController.completionWithItemsHandler = ^(NSString *activityType, BOOL completed, NSArray *returnedItems, NSError *activityError) {
@@ -535,6 +593,30 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     else {
         [self.presentingViewController dismissViewControllerAnimated:YES completion:nil];
     }
+}
+
+#pragma mark - Property methods
+
+- (TOCropView *)cropView {
+    if (!_cropView) {
+        _cropView = [[TOCropView alloc] initWithImage:self.image];
+        _cropView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _cropView.delegate = self;
+        _cropView.frame = [UIScreen mainScreen].bounds;
+    }
+    return _cropView;
+}
+
+- (TOCropToolbar *)toolbar {
+    if (!_toolbar) {
+        static CGFloat height = 44.f;
+        CGRect frame = CGRectMake(.0f,
+                                  CGRectGetHeight([UIScreen mainScreen].bounds) - height,
+                                  CGRectGetWidth([UIScreen mainScreen].bounds),
+                                  height);
+        _toolbar = [[TOCropToolbar alloc] initWithFrame:frame];
+    }
+    return _toolbar;
 }
 
 @end

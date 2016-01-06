@@ -24,15 +24,15 @@
 
 @interface TOCropToolbar()
 
-@property (nonatomic, strong) UIButton *doneTextButton;
-@property (nonatomic, strong) UIButton *doneIconButton;
+@property (nonatomic, strong, readwrite) UIButton *doneTextButton;
+@property (nonatomic, strong, readwrite) UIButton *doneIconButton;
 
-@property (nonatomic, strong) UIButton *cancelTextButton;
-@property (nonatomic, strong) UIButton *cancelIconButton;
+@property (nonatomic, strong, readwrite) UIButton *cancelTextButton;
+@property (nonatomic, strong, readwrite) UIButton *cancelIconButton;
 
-@property (nonatomic, strong) UIButton *rotateButton;
-@property (nonatomic, strong) UIButton *resetButton;
-@property (nonatomic, strong) UIButton *clampButton;
+@property (nonatomic, strong, readwrite) UIButton *rotateButton;
+@property (nonatomic, strong, readwrite) UIButton *resetButton;
+@property (nonatomic, strong, readwrite) UIButton *clampButton;
 
 - (void)setup;
 - (void)buttonTapped:(id)button;
@@ -127,10 +127,22 @@
     self.cancelTextButton.hidden = (verticalLayout);
     self.doneIconButton.hidden   = (!verticalLayout);
     self.doneTextButton.hidden   = (verticalLayout);
-    
-    self.rotateButton.hidden = self.rotateButtonHidden;
+   
     self.clampButton.hidden = self.clampButtonHidden;
-    
+    self.rotateButton.hidden = self.rotateButtonHidden;
+   
+    CGFloat containerRectWidth = 165.0f;
+    NSInteger buttonCount = 3;
+    if (self.rotateButtonHidden && self.clampButtonHidden) {
+        buttonCount = 1;
+    }
+    else if (self.rotateButtonHidden || self.clampButtonHidden) {
+        buttonCount = 2;
+    }
+    CGFloat buttonWidth = floorf(containerRectWidth/buttonCount);
+   
+    CGRect containerRect;
+    CGRectEdge rectEdge;
     if (verticalLayout == NO) {
         CGRect frame = CGRectZero;
         frame.size.height = 44.0f;
@@ -141,36 +153,9 @@
         frame.origin.x = boundsSize.width - CGRectGetWidth(frame);
         self.doneTextButton.frame = frame;
         
-        CGRect containerRect = (CGRect){0,0,165.0f,44.0f};
+        containerRect = (CGRect){0,0,containerRectWidth,44.0f};
         containerRect.origin.x = (CGRectGetWidth(self.bounds) - (CGRectGetWidth(containerRect))) * 0.5f;
-
-        if (self.clampButtonHidden) {
-            containerRect = (CGRect){0,0,145.0f,44.0f};
-            containerRect.origin.x = (CGRectGetWidth(self.bounds) - (CGRectGetWidth(containerRect))) * 0.5f;
-        }
-        
-        CGRect buttonFrame = (CGRect){0,0,44.0f,44.0f};
-        
-        if (self.rotateButtonHidden) {
-            buttonFrame.origin.x = CGRectGetMinX(containerRect);
-            self.resetButton.frame = buttonFrame;
-        }
-        else {
-            buttonFrame.origin.x = CGRectGetMinX(containerRect);
-            self.rotateButton.frame = buttonFrame;
-            
-            if (self.clampButtonHidden) {
-                buttonFrame.origin.x = CGRectGetMaxX(containerRect) -  44.0f;
-                self.resetButton.frame = buttonFrame;
-            }
-            else {
-                buttonFrame.origin.x = CGRectGetMidX(containerRect) -  22.0f;
-                self.resetButton.frame = buttonFrame;
-            }
-        }
-        
-        buttonFrame.origin.x = CGRectGetMaxX(containerRect) - 44.0f;
-        self.clampButton.frame = buttonFrame;
+        rectEdge = CGRectMinXEdge;
     }
     else {
         CGRect frame = CGRectZero;
@@ -184,24 +169,22 @@
         frame.size.height = 44.0f;
         self.doneIconButton.frame = frame;
         
-        CGRect containerRect = (CGRect){0,0,44.0f,165.0f};
+        containerRect = (CGRect){0,0,44.0f,containerRectWidth};
         containerRect.origin.y = (CGRectGetHeight(self.bounds) - (CGRectGetHeight(containerRect))) * 0.5f;
-        
-        CGRect buttonFrame = (CGRect){0,0,44.0f,44.0f};
-        
-        if (self.rotateButtonHidden) {
-            buttonFrame.origin.y = CGRectGetMinY(containerRect);
-            self.resetButton.frame = buttonFrame;
-        }
-        else {
-            buttonFrame.origin.y = CGRectGetMinY(containerRect);
-            self.rotateButton.frame = buttonFrame;
-            
-            buttonFrame.origin.y = CGRectGetMidY(containerRect) -  22.0f;
-            self.resetButton.frame = buttonFrame;
-        }
+        rectEdge = CGRectMinYEdge;
+    }
 
-        buttonFrame.origin.y = CGRectGetMaxY(containerRect) - 44.0f;
+    CGRect buttonFrame;
+    if (!self.rotateButtonHidden) {
+        CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
+        self.rotateButton.frame = buttonFrame;
+    }
+    
+    CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
+    self.resetButton.frame = buttonFrame;
+    
+    if (!self.clampButtonHidden) {
+        CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
         self.clampButton.frame = buttonFrame;
     }
 }
@@ -231,6 +214,14 @@
 - (CGRect)clampButtonFrame
 {
     return self.clampButton.frame;
+}
+
+- (void)setClampButtonHidden:(BOOL)clampButtonHidden {
+    if (_clampButtonHidden == clampButtonHidden)
+        return;
+    
+    _clampButtonHidden = clampButtonHidden;
+    [self setNeedsLayout];
 }
 
 - (void)setClampButtonGlowing:(BOOL)clampButtonGlowing

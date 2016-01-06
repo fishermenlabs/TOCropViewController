@@ -40,6 +40,11 @@
     UIViewController *cropViewController = (self.isDismissing == NO) ? toViewController : fromViewController;
     UIViewController *previousController = (self.isDismissing == NO) ? fromViewController : toViewController;
     
+    cropViewController.view.frame = containerView.bounds;
+    
+    if (self.isDismissing)
+        previousController.view.frame = containerView.bounds;
+    
     UIImageView *imageView = nil;
     if ((self.isDismissing && !CGRectIsEmpty(self.toFrame)) || (!self.isDismissing && !CGRectIsEmpty(self.fromFrame))) {
         imageView = [[UIImageView alloc] initWithImage:self.image];
