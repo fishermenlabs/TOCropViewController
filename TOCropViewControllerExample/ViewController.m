@@ -128,6 +128,14 @@
         self.image = image;
         TOCropViewController *cropController = [[TOCropViewController alloc] initWithImage:image];
         cropController.delegate = self;
+        
+        // Uncomment this to test out locked aspect ratio sizes
+        // cropController.defaultAspectRatio = TOCropViewControllerAspectRatioSquare;
+        // cropController.aspectRatioLocked = YES;
+        
+        // Uncomment this to place the toolbar at the top of the view controller
+        // cropController.toolbarPosition = TOCropViewControllerToolbarPositionTop;
+        
         [self presentViewController:cropController animated:YES completion:nil];
     }];
 }
@@ -142,6 +150,10 @@
 {
     TOCropViewController *cropController = [[TOCropViewController alloc] initWithImage:self.image];
     cropController.delegate = self;
+    
+    // Uncomment this to place the toolbar at the top of the view controller
+    // cropController.toolbarPosition = TOCropViewControllerToolbarPositionTop;
+    
     [self presentViewController:cropController animated:YES completion:nil];
 }
 

@@ -1,7 +1,7 @@
 //
 //  TOCropToolbar.h
 //
-//  Copyright 2015 Timothy Oliver. All rights reserved.
+//  Copyright 2015-2016 Timothy Oliver. All rights reserved.
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to
@@ -22,6 +22,8 @@
 
 #import "TOCropToolbar.h"
 
+#define kTOCropToolbarShowButtonsContainerRectForDebugging     0   // convenience debug toggle
+
 @interface TOCropToolbar()
 
 @property (nonatomic, strong, readwrite) UIButton *doneTextButton;
@@ -30,9 +32,12 @@
 @property (nonatomic, strong, readwrite) UIButton *cancelTextButton;
 @property (nonatomic, strong, readwrite) UIButton *cancelIconButton;
 
-@property (nonatomic, strong, readwrite) UIButton *rotateButton;
-@property (nonatomic, strong, readwrite) UIButton *resetButton;
-@property (nonatomic, strong, readwrite) UIButton *clampButton;
+@property (nonatomic, strong) UIButton *resetButton;
+@property (nonatomic, strong) UIButton *clampButton;
+
+@property (nonatomic, strong) UIButton *rotateButton; // defaults to counterclockwise button for legacy compatibility
+
+@property (nonatomic, assign) BOOL reverseContentLayout; // For languages like Arabic where they natively present content flipped from English
 
 - (void)setup;
 - (void)buttonTapped:(id)button;
@@ -40,7 +45,8 @@
 + (UIImage *)doneImage;
 + (UIImage *)cancelImage;
 + (UIImage *)resetImage;
-+ (UIImage *)rotateImage;
++ (UIImage *)rotateCCWImage;
++ (UIImage *)rotateCWImage;
 + (UIImage *)clampImage;
 
 @end
@@ -59,8 +65,17 @@
 - (void)setup {
     self.backgroundColor = [UIColor colorWithWhite:0.12f alpha:1.0f];
     
+    _rotateClockwiseButtonHidden = YES;
+    
+    // On iOS 9, we can use the new layout features to determine whether we're in an 'Arabic' style language mode
+    if ([UIView resolveClassMethod:@selector(userInterfaceLayoutDirectionForSemanticContentAttribute:)]) {
+        self.reverseContentLayout = ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:self.semanticContentAttribute] == UIUserInterfaceLayoutDirectionRightToLeft);
+    }
+    else {
+        self.reverseContentLayout = [[[NSLocale preferredLanguages] objectAtIndex:0] containsString:@"ar"];
+    }
+    
     _doneTextButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _doneTextButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     [_doneTextButton setTitle:NSLocalizedStringFromTableInBundle(@"Done",
                                                                  @"TOCropViewControllerLocalizable",
                                                                  [NSBundle bundleForClass:[self class]],
@@ -78,7 +93,6 @@
     [self addSubview:_doneIconButton];
     
     _cancelTextButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _cancelTextButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentRight;
     [_cancelTextButton setTitle:NSLocalizedStringFromTableInBundle(@"Cancel",
                                                                    @"TOCropViewControllerLocalizable",
                                                                    [NSBundle bundleForClass:[self class]],
@@ -100,12 +114,12 @@
     [_clampButton addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self addSubview:_clampButton];
     
-    _rotateButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _rotateButton.contentMode = UIViewContentModeCenter;
-    _rotateButton.tintColor = [UIColor whiteColor];
-    [_rotateButton setImage:[TOCropToolbar rotateImage] forState:UIControlStateNormal];
-    [_rotateButton addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:_rotateButton];
+    _rotateCounterclockwiseButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _rotateCounterclockwiseButton.contentMode = UIViewContentModeCenter;
+    _rotateCounterclockwiseButton.tintColor = [UIColor whiteColor];
+    [_rotateCounterclockwiseButton setImage:[TOCropToolbar rotateCCWImage] forState:UIControlStateNormal];
+    [_rotateCounterclockwiseButton addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:_rotateCounterclockwiseButton];
     
     _resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _resetButton.contentMode = UIViewContentModeCenter;
@@ -127,35 +141,81 @@
     self.cancelTextButton.hidden = (verticalLayout);
     self.doneIconButton.hidden   = (!verticalLayout);
     self.doneTextButton.hidden   = (verticalLayout);
-   
-    self.clampButton.hidden = self.clampButtonHidden;
-    self.rotateButton.hidden = self.rotateButtonHidden;
-   
-    CGFloat containerRectWidth = 165.0f;
-    NSInteger buttonCount = 3;
-    if (self.rotateButtonHidden && self.clampButtonHidden) {
-        buttonCount = 1;
+    
+#if kTOCropToolbarShowButtonsContainerRectForDebugging
+    static UIView *containerView = nil;
+    if (!containerView) {
+        containerView = [[UIView alloc] initWithFrame:CGRectZero];
+        containerView.backgroundColor = [UIColor redColor];
+        containerView.alpha = 0.1;
+        [self addSubview:containerView];
     }
-    else if (self.rotateButtonHidden || self.clampButtonHidden) {
-        buttonCount = 2;
-    }
-    CGFloat buttonWidth = floorf(containerRectWidth/buttonCount);
-   
-    CGRect containerRect;
-    CGRectEdge rectEdge;
+#endif
+    
     if (verticalLayout == NO) {
+        CGFloat insetPadding = 10.0f;
+        
+        // Work out the cancel button frame
         CGRect frame = CGRectZero;
         frame.size.height = 44.0f;
         frame.size.width = [self.cancelTextButton.titleLabel.text sizeWithAttributes:@{NSFontAttributeName:self.cancelTextButton.titleLabel.font}].width + 10;
+
+        //If normal layout, place on the left side, else place on the right
+        if (self.reverseContentLayout == NO) {
+            frame.origin.x = insetPadding;
+        }
+        else {
+            frame.origin.x = boundsSize.width - (frame.size.width + insetPadding);
+        }
         self.cancelTextButton.frame = frame;
         
+        // Work out the Done button frame
         frame.size.width = [self.doneTextButton.titleLabel.text sizeWithAttributes:@{NSFontAttributeName:self.doneTextButton.titleLabel.font}].width + 10;
-        frame.origin.x = boundsSize.width - CGRectGetWidth(frame);
+        
+        if (self.reverseContentLayout == NO) {
+            frame.origin.x = boundsSize.width - (frame.size.width + insetPadding);
+        }
+        else {
+            frame.origin.x = insetPadding;
+        }
         self.doneTextButton.frame = frame;
         
-        containerRect = (CGRect){0,0,containerRectWidth,44.0f};
-        containerRect.origin.x = (CGRectGetWidth(self.bounds) - (CGRectGetWidth(containerRect))) * 0.5f;
-        rectEdge = CGRectMinXEdge;
+        // Work out the frame between the two buttons where we can layout our action buttons
+        CGFloat x = self.reverseContentLayout ? CGRectGetMaxX(self.doneTextButton.frame) : CGRectGetMaxX(self.cancelTextButton.frame);
+        CGFloat width = 0.0f;
+        
+        if (self.reverseContentLayout == NO) {
+            width = CGRectGetMinX(self.doneTextButton.frame) - CGRectGetMaxX(self.cancelTextButton.frame);
+        }
+        else {
+            width = CGRectGetMinX(self.cancelTextButton.frame) - CGRectGetMaxX(self.doneTextButton.frame);
+        }
+        
+        CGRect containerRect = (CGRect){x,0,width,44.0f};
+
+#if kTOCropToolbarShowButtonsContainerRectForDebugging
+        containerView.frame = containerRect;
+#endif
+        
+        CGSize buttonSize = (CGSize){44.0f,44.0f};
+        
+        NSMutableArray *buttonsInOrderHorizontally = [NSMutableArray new];
+        if (!self.rotateCounterClockwiseButtonHidden) {
+            [buttonsInOrderHorizontally addObject:self.rotateCounterclockwiseButton];
+        }
+        
+        [buttonsInOrderHorizontally addObject:self.resetButton];
+        
+        if (!self.clampButtonHidden) {
+            [buttonsInOrderHorizontally addObject:self.clampButton];
+        }
+        
+        if (!self.rotateClockwiseButtonHidden) {
+            [buttonsInOrderHorizontally addObject:self.rotateClockwiseButton];
+        }
+        
+        
+        [self layoutToolbarButtons:buttonsInOrderHorizontally withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:YES];
     }
     else {
         CGRect frame = CGRectZero;
@@ -169,23 +229,47 @@
         frame.size.height = 44.0f;
         self.doneIconButton.frame = frame;
         
-        containerRect = (CGRect){0,0,44.0f,containerRectWidth};
-        containerRect.origin.y = (CGRectGetHeight(self.bounds) - (CGRectGetHeight(containerRect))) * 0.5f;
-        rectEdge = CGRectMinYEdge;
+        CGRect containerRect = (CGRect){0,CGRectGetMaxY(self.doneIconButton.frame),44.0f,CGRectGetMinY(self.cancelIconButton.frame)-CGRectGetMaxY(self.doneIconButton.frame)};
+        
+#if kTOCropToolbarShowButtonsContainerRectForDebugging
+        containerView.frame = containerRect;
+#endif
+        
+        CGSize buttonSize = (CGSize){44.0f,44.0f};
+        
+        if (self.rotateCounterClockwiseButtonHidden) {
+            [self layoutToolbarButtons:@[self.resetButton, self.clampButton] withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:NO];
+        }
+        else {
+            NSMutableArray *buttonsInOrderVertically = [@[self.rotateCounterclockwiseButton, self.resetButton, self.clampButton] mutableCopy];
+            if (self.rotateClockwiseButton) {
+                [buttonsInOrderVertically addObject:self.rotateClockwiseButton];
+            }
+            
+            [self layoutToolbarButtons:buttonsInOrderVertically withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:NO];
+        }
     }
+}
 
-    CGRect buttonFrame;
-    if (!self.rotateButtonHidden) {
-        CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
-        self.rotateButton.frame = buttonFrame;
-    }
+// The convenience method for calculating button's frame inside of the container rect
+- (void)layoutToolbarButtons:(NSArray *)buttons withSameButtonSize:(CGSize)size inContainerRect:(CGRect)containerRect horizontally:(BOOL)horizontally
+{
+    NSInteger count = buttons.count;
+    CGFloat fixedSize = horizontally ? size.width : size.height;
+    CGFloat maxLength = horizontally ? CGRectGetWidth(containerRect) : CGRectGetHeight(containerRect);
+    CGFloat padding = (maxLength - fixedSize * count) / (count + 1);
     
-    CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
-    self.resetButton.frame = buttonFrame;
-    
-    if (!self.clampButtonHidden) {
-        CGRectDivide(containerRect, &buttonFrame, &containerRect, buttonWidth, rectEdge);
-        self.clampButton.frame = buttonFrame;
+    for (NSInteger i = 0; i < count; i++) {
+        UIView *button = buttons[i];
+        CGFloat sameOffset = horizontally ? fabs(CGRectGetHeight(containerRect)-CGRectGetHeight(button.bounds)) : fabs(CGRectGetWidth(containerRect)-CGRectGetWidth(button.bounds));
+        CGFloat diffOffset = padding + i * (fixedSize + padding);
+        CGPoint origin = horizontally ? CGPointMake(diffOffset, sameOffset) : CGPointMake(sameOffset, diffOffset);
+        if (horizontally) {
+            origin.x += CGRectGetMinX(containerRect);
+        } else {
+            origin.y += CGRectGetMinY(containerRect);
+        }
+        button.frame = (CGRect){origin, size};
     }
 }
 
@@ -202,8 +286,11 @@
     else if (button == self.resetButton && self.resetButtonTapped) {
         self.resetButtonTapped();
     }
-    else if (button == self.rotateButton && self.rotateButtonTapped) {
-        self.rotateButtonTapped();
+    else if (button == self.rotateCounterclockwiseButton && self.rotateCounterclockwiseButtonTapped) {
+        self.rotateCounterclockwiseButtonTapped();
+    }
+    else if (button == self.rotateClockwiseButton && self.rotateClockwiseButtonTapped) {
+        self.rotateClockwiseButtonTapped();
     }
     else if (button == self.clampButton && self.clampButtonTapped) {
         self.clampButtonTapped();
@@ -237,12 +324,12 @@
         self.clampButton.tintColor = [UIColor whiteColor];
 }
 
-- (void)setRotateButtonHidden:(BOOL)rotateButtonHidden
+- (void)setRotateCounterClockwiseButtonHidden:(BOOL)rotateButtonHidden
 {
-    if (_rotateButtonHidden == rotateButtonHidden)
+    if (_rotateCounterClockwiseButtonHidden == rotateButtonHidden)
         return;
     
-    _rotateButtonHidden = rotateButtonHidden;
+    _rotateCounterClockwiseButtonHidden = rotateButtonHidden;
     [self setNeedsLayout];
 }
 
@@ -317,7 +404,7 @@
     return cancelImage;
 }
 
-+ (UIImage *)rotateImage
++ (UIImage *)rotateCCWImage
 {
     UIImage *rotateImage = nil;
     
@@ -352,6 +439,19 @@
     UIGraphicsEndImageContext();
     
     return rotateImage;
+}
+
++ (UIImage *)rotateCWImage
+{
+    UIImage *rotateCCWImage = [self.class rotateCCWImage];
+    UIGraphicsBeginImageContextWithOptions(rotateCCWImage.size, NO, rotateCCWImage.scale);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextTranslateCTM(context, rotateCCWImage.size.width, rotateCCWImage.size.height);
+    CGContextRotateCTM(context, M_PI);
+    CGContextDrawImage(context,CGRectMake(0,0,rotateCCWImage.size.width,rotateCCWImage.size.height),rotateCCWImage.CGImage);
+    UIImage *rotateCWImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return rotateCWImage;
 }
 
 + (UIImage *)resetImage
@@ -439,6 +539,37 @@
     UIGraphicsEndImageContext();
     
     return clampImage;
+}
+
+#pragma mark - Accessors -
+
+- (void)setRotateClockwiseButtonHidden:(BOOL)rotateClockwiseButtonHidden
+{
+    if (_rotateClockwiseButtonHidden == rotateClockwiseButtonHidden) {
+        return;
+    }
+    
+    _rotateClockwiseButtonHidden = rotateClockwiseButtonHidden;
+    
+    if (_rotateClockwiseButton == NO) {
+        _rotateClockwiseButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        _rotateClockwiseButton.contentMode = UIViewContentModeCenter;
+        _rotateClockwiseButton.tintColor = [UIColor whiteColor];
+        [_rotateClockwiseButton setImage:[TOCropToolbar rotateCWImage] forState:UIControlStateNormal];
+        [_rotateClockwiseButton addTarget:self action:@selector(buttonTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_rotateClockwiseButton];
+    }
+    else {
+        [_rotateClockwiseButton removeFromSuperview];
+        _rotateClockwiseButton = nil;
+    }
+    
+    [self setNeedsLayout];
+}
+
+- (UIButton *)rotateButton
+{
+    return self.rotateCounterclockwiseButton;
 }
 
 @end

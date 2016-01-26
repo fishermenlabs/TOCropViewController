@@ -1,7 +1,7 @@
 //
 //  TOCropViewController.h
 //
-//  Copyright 2015 Timothy Oliver. All rights reserved.
+//  Copyright 2015-2016 Timothy Oliver. All rights reserved.
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy
 //  of this software and associated documentation files (the "Software"), to
@@ -45,10 +45,12 @@
 - (void)doneButtonTapped;
 - (void)showAspectRatioDialog;
 - (void)resetCropViewLayout;
-- (void)rotateCropView;
+- (void)rotateCropViewClockwise;
+- (void)rotateCropViewCounterclockwise;
 
 /* View layout */
 - (CGRect)frameForToolBarWithVerticalLayout:(BOOL)verticalLayout;
+- (CGRect)frameForCropViewWithVerticalLayout:(BOOL)verticalLayout;
 
 @end
 
@@ -56,6 +58,10 @@
 
 - (instancetype)initWithImage:(UIImage *)image
 {
+    if (image == nil) {
+        return nil;
+    }
+    
     self = [super init];
     if (self) {
         self.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
@@ -65,7 +71,7 @@
         _image = image;
         
         _defaultAspectRatio = TOCropViewControllerAspectRatioOriginal;
-        _lockedAspectRatio = NO;
+        _toolbarPosition = TOCropViewControllerToolbarPositionBottom;
     }
     
     return self;
@@ -75,8 +81,7 @@
 {
     [super viewDidLoad];
 
-    BOOL landscapeLayout = CGRectGetWidth(self.view.frame) > CGRectGetHeight(self.view.frame);
-    self.cropView.frame = (CGRect){(landscapeLayout ? 44.0f : 0.0f),0,(CGRectGetWidth(self.view.bounds) - (landscapeLayout ? 44.0f : 0.0f)), (CGRectGetHeight(self.view.bounds)-(landscapeLayout ? 0.0f : 44.0f)) };
+    self.cropView.frame = [self frameForCropViewWithVerticalLayout:CGRectGetWidth(self.view.bounds) < CGRectGetHeight(self.view.bounds)];
     [self.view addSubview:self.cropView];
 
     self.toolbar.frame = [self frameForToolBarWithVerticalLayout:CGRectGetWidth(self.view.bounds) < CGRectGetHeight(self.view.bounds)];
@@ -85,12 +90,16 @@
     __weak typeof(self) weakSelf = self;
     self.toolbar.doneButtonTapped =     ^{ [weakSelf doneButtonTapped]; };
     self.toolbar.cancelButtonTapped =   ^{ [weakSelf cancelButtonTapped]; };
+    
     self.toolbar.resetButtonTapped =    ^{ [weakSelf resetCropViewLayout]; };
     self.toolbar.clampButtonTapped =    ^{ [weakSelf showAspectRatioDialog]; };
-    self.toolbar.rotateButtonTapped =   ^{ [weakSelf rotateCropView]; };
+    
+    self.toolbar.rotateCounterclockwiseButtonTapped =   ^{ [weakSelf rotateCropViewCounterclockwise]; };
+    self.toolbar.rotateClockwiseButtonTapped =   ^{ [weakSelf rotateCropViewClockwise]; };
+    
+    self.toolbar.clampButtonHidden = self.aspectRatioLocked;
     
     self.transitioningDelegate = self;
-    
     self.view.backgroundColor = self.cropView.backgroundColor;
 
     if (self.defaultAspectRatio != TOCropViewControllerAspectRatioOriginal) {
@@ -157,9 +166,40 @@
     }
     else {
         frame.origin.x = 0.0f;
-        frame.origin.y = CGRectGetHeight(self.view.bounds) - 44.0f;
+        
+        if (_toolbarPosition == TOCropViewControllerToolbarPositionBottom) {
+            frame.origin.y = CGRectGetHeight(self.view.bounds) - 44.0f;
+        } else {
+            frame.origin.y = 0;
+        }
+        
         frame.size.width = CGRectGetWidth(self.view.bounds);
         frame.size.height = 44.0f;
+    }
+    
+    return frame;
+}
+
+- (CGRect)frameForCropViewWithVerticalLayout:(BOOL)verticalLayout
+{
+    CGRect frame = self.cropView.frame;
+    if (verticalLayout ) {
+        frame.origin.x = 44.0f;
+        frame.origin.y = 0.0f;
+        frame.size.width = CGRectGetWidth(self.view.bounds) - 44.0f;
+        frame.size.height = CGRectGetHeight(self.view.frame);
+    }
+    else {
+        frame.origin.x = 0.0f;
+        
+        if (_toolbarPosition == TOCropViewControllerToolbarPositionBottom) {
+            frame.origin.y = 0.0f;
+        } else {
+            frame.origin.y = 44.0f;
+        }
+
+        frame.size.width = CGRectGetWidth(self.view.bounds);
+        frame.size.height = CGRectGetHeight(self.view.frame) - 44.0f;
     }
     
     return frame;
@@ -170,20 +210,10 @@
     [super viewDidLayoutSubviews];
     
     BOOL verticalLayout = CGRectGetWidth(self.view.bounds) > CGRectGetHeight(self.view.bounds);
-    if (verticalLayout ) {
-        CGRect frame = self.cropView.frame;
-        frame.origin.x = 44.0f;
-        frame.size.width = CGRectGetWidth(self.view.bounds) - 44.0f;
-        frame.size.height = CGRectGetHeight(self.view.bounds);
-        self.cropView.frame = frame;
-    }
-    else {
-        CGRect frame = self.cropView.frame;
-        frame.origin.x = 0.0f;
-        frame.size.width = CGRectGetWidth(self.view.bounds);
-        frame.size.height = CGRectGetHeight(self.view.bounds) - 44.0f;
-        self.cropView.frame = frame;
-    }
+    self.cropView.frame = [self frameForCropViewWithVerticalLayout:verticalLayout];
+    
+    [self.cropView prepareforRotation];
+    [self.cropView performRelayoutForRotation];
     
     [UIView setAnimationsEnabled:NO];
     self.toolbar.frame = [self frameForToolBarWithVerticalLayout:verticalLayout];
@@ -209,6 +239,7 @@
     [self.view addSubview:self.snapshotView];
 
     self.toolbar.frame = [self frameForToolBarWithVerticalLayout:UIInterfaceOrientationIsLandscape(toInterfaceOrientation)];
+    self.cropView.frame = [self frameForCropViewWithVerticalLayout:UIInterfaceOrientationIsLandscape(toInterfaceOrientation)];
     [self.toolbar layoutIfNeeded];
     
     self.toolbar.alpha = 0.0f;
@@ -220,6 +251,7 @@
 - (void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration
 {
     self.toolbar.frame = [self frameForToolBarWithVerticalLayout:UIInterfaceOrientationIsLandscape(toInterfaceOrientation)];
+    self.cropView.frame = [self frameForCropViewWithVerticalLayout:UIInterfaceOrientationIsLandscape(toInterfaceOrientation)];
     
     [UIView animateWithDuration:duration animations:^{
         self.snapshotView.alpha = 0.0f;
@@ -257,12 +289,14 @@
 #pragma mark - Reset -
 - (void)resetCropViewLayout
 {
-    [self.cropView resetLayoutToDefaultAnimated:YES];
+    BOOL animated = (self.cropView.angle == 0);
+    [self.cropView resetLayoutToDefaultAnimated:animated];
     
-    if (self.lockedAspectRatio) {
-        [self setAspectRatio:self.defaultAspectRatio animated:NO];
-    } else {
-        self.cropView.aspectLockEnabled = NO;
+    if (self.aspectRatioLocked) {
+        [self setAspectRatio:self.defaultAspectRatio animated:animated];
+    }
+    else {
+        self.cropView.aspectRatioLocked = NO;
         self.toolbar.clampButtonGlowing = NO;
     }
 }
@@ -270,8 +304,8 @@
 #pragma mark - Aspect Ratio Handling -
 - (void)showAspectRatioDialog
 {
-    if (self.cropView.aspectLockEnabled) {
-        self.cropView.aspectLockEnabled = NO;
+    if (self.cropView.aspectRatioLocked) {
+        self.cropView.aspectRatioLocked = NO;
         self.toolbar.clampButtonGlowing = NO;
         return;
     }
@@ -389,12 +423,14 @@
     self.toolbar.clampButtonGlowing = YES;
 }
 
-- (void)rotateCropView
+- (void)rotateCropViewClockwise
 {
-    [self.cropView rotateImageNinetyDegreesAnimated:YES];
-    if (self.lockedAspectRatio) {
-        [self setAspectRatio:self.defaultAspectRatio animated:NO];
-    }
+    [self.cropView rotateImageNinetyDegreesAnimated:YES clockwise:YES];
+}
+
+- (void)rotateCropViewCounterclockwise
+{
+    [self.cropView rotateImageNinetyDegreesAnimated:YES clockwise:NO];
 }
 
 #pragma mark - Crop View Delegates -
@@ -595,7 +631,7 @@
     }
 }
 
-#pragma mark - Property methods
+#pragma mark - Property Methods -
 
 - (TOCropView *)cropView {
     if (!_cropView) {
@@ -617,6 +653,39 @@
         _toolbar = [[TOCropToolbar alloc] initWithFrame:frame];
     }
     return _toolbar;
+}
+
+- (void)setAspectRatioLocked:(BOOL)aspectRatioLocked
+{
+    self.cropView.aspectRatioLocked = aspectRatioLocked;
+    self.toolbar.clampButtonHidden = aspectRatioLocked;
+}
+
+- (BOOL)aspectRatioLocked
+{
+    return self.cropView.aspectRatioLocked;
+}
+
+- (void)setRotateButtonsHidden:(BOOL)rotateButtonsHidden
+{
+    self.toolbar.rotateCounterClockwiseButtonHidden = rotateButtonsHidden;
+    
+    if (self.rotateClockwiseButtonHidden == NO) {
+        self.toolbar.rotateClockwiseButtonHidden = rotateButtonsHidden;
+    }
+}
+
+- (void)setRotateClockwiseButtonHidden:(BOOL)rotateClockwiseButtonHidden
+{
+    if (_rotateClockwiseButtonHidden == rotateClockwiseButtonHidden) {
+        return;
+    }
+    
+    _rotateClockwiseButtonHidden = rotateClockwiseButtonHidden;
+    
+    if (self.rotateButtonsHidden == NO) {
+        self.toolbar.rotateClockwiseButtonHidden = _rotateClockwiseButtonHidden;
+    }
 }
 
 @end
