@@ -72,7 +72,7 @@
         self.reverseContentLayout = ([UIView userInterfaceLayoutDirectionForSemanticContentAttribute:self.semanticContentAttribute] == UIUserInterfaceLayoutDirectionRightToLeft);
     }
     else {
-        self.reverseContentLayout = [[[NSLocale preferredLanguages] objectAtIndex:0] containsString:@"ar"];
+        self.reverseContentLayout = [[[NSLocale preferredLanguages] objectAtIndex:0] hasPrefix:@"ar"];
     }
     
     _doneTextButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -493,6 +493,7 @@
 
         resetImage = UIGraphicsGetImageFromCurrentImageContext();
     }
+    UIGraphicsEndImageContext();
     
     return resetImage;
 }
