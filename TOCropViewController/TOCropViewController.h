@@ -33,7 +33,8 @@ typedef NS_ENUM(NSInteger, TOCropViewControllerAspectRatio) {
     TOCropViewControllerAspectRatio4x3,
     TOCropViewControllerAspectRatio5x4,
     TOCropViewControllerAspectRatio7x5,
-    TOCropViewControllerAspectRatio16x9
+    TOCropViewControllerAspectRatio16x9,
+    TOCropViewControllerAspectRatio9x16
 };
 
 typedef NS_ENUM(NSInteger, TOCropViewControllerToolbarPosition) {
