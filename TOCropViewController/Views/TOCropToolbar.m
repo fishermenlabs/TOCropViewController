@@ -22,7 +22,7 @@
 
 #import "TOCropToolbar.h"
 
-#define kTOCropToolbarShowButtonsContainerRectForDebugging     0   // convenience debug toggle
+#define TOCROPTOOLBAR_DEBUG_SHOWING_BUTTONS_CONTAINER_RECT     0   // convenience debug toggle
 
 @interface TOCropToolbar()
 
@@ -75,10 +75,21 @@
         self.reverseContentLayout = [[[NSLocale preferredLanguages] objectAtIndex:0] hasPrefix:@"ar"];
     }
     
+    // In CocoaPods, strings are stored in a separate bundle from the main one
+    NSBundle *resourceBundle = nil;
+    NSBundle *classBundle = [NSBundle bundleForClass:[self class]];
+    NSURL *resourceBundleURL = [classBundle URLForResource:@"TOCropViewControllerBundle" withExtension:@"bundle"];
+    if (resourceBundleURL) {
+        resourceBundle = [[NSBundle alloc] initWithURL:resourceBundleURL];
+    }
+    else {
+        resourceBundle = classBundle;
+    }
+    
     _doneTextButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_doneTextButton setTitle:NSLocalizedStringFromTableInBundle(@"Done",
                                                                  @"TOCropViewControllerLocalizable",
-                                                                 [NSBundle bundleForClass:[self class]],
+                                                                 resourceBundle,
                                                                  nil)
                      forState:UIControlStateNormal];
     [_doneTextButton setTitleColor:[UIColor colorWithRed:1.0f green:0.8f blue:0.0f alpha:1.0f] forState:UIControlStateNormal];
@@ -95,7 +106,7 @@
     _cancelTextButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_cancelTextButton setTitle:NSLocalizedStringFromTableInBundle(@"Cancel",
                                                                    @"TOCropViewControllerLocalizable",
-                                                                   [NSBundle bundleForClass:[self class]],
+                                                                   resourceBundle,
                                                                    nil)
                        forState:UIControlStateNormal];
     [_cancelTextButton.titleLabel setFont:[UIFont systemFontOfSize:17.0f]];
@@ -142,7 +153,7 @@
     self.doneIconButton.hidden   = (!verticalLayout);
     self.doneTextButton.hidden   = (verticalLayout);
     
-#if kTOCropToolbarShowButtonsContainerRectForDebugging
+#if TOCROPTOOLBAR_DEBUG_SHOWING_BUTTONS_CONTAINER_RECT
     static UIView *containerView = nil;
     if (!containerView) {
         containerView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -193,7 +204,7 @@
         
         CGRect containerRect = (CGRect){x,0,width,44.0f};
 
-#if kTOCropToolbarShowButtonsContainerRectForDebugging
+#if TOCROPTOOLBAR_DEBUG_SHOWING_BUTTONS_CONTAINER_RECT
         containerView.frame = containerRect;
 #endif
         
@@ -231,23 +242,28 @@
         
         CGRect containerRect = (CGRect){0,CGRectGetMaxY(self.doneIconButton.frame),44.0f,CGRectGetMinY(self.cancelIconButton.frame)-CGRectGetMaxY(self.doneIconButton.frame)};
         
-#if kTOCropToolbarShowButtonsContainerRectForDebugging
+#if TOCROPTOOLBAR_DEBUG_SHOWING_BUTTONS_CONTAINER_RECT
         containerView.frame = containerRect;
 #endif
         
         CGSize buttonSize = (CGSize){44.0f,44.0f};
         
-        if (self.rotateCounterClockwiseButtonHidden) {
-            [self layoutToolbarButtons:@[self.resetButton, self.clampButton] withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:NO];
+        NSMutableArray *buttonsInOrderVertically = [NSMutableArray new];
+        if (!self.rotateCounterClockwiseButtonHidden) {
+            [buttonsInOrderVertically addObject:self.rotateCounterclockwiseButton];
         }
-        else {
-            NSMutableArray *buttonsInOrderVertically = [@[self.rotateCounterclockwiseButton, self.resetButton, self.clampButton] mutableCopy];
-            if (self.rotateClockwiseButton) {
-                [buttonsInOrderVertically addObject:self.rotateClockwiseButton];
-            }
-            
-            [self layoutToolbarButtons:buttonsInOrderVertically withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:NO];
+        
+        [buttonsInOrderVertically addObject:self.resetButton];
+        
+        if (!self.clampButtonHidden) {
+            [buttonsInOrderVertically addObject:self.clampButton];
         }
+        
+        if (!self.rotateClockwiseButtonHidden) {
+            [buttonsInOrderVertically addObject:self.rotateClockwiseButton];
+        }
+        
+        [self layoutToolbarButtons:buttonsInOrderVertically withSameButtonSize:buttonSize inContainerRect:containerRect horizontally:NO];
     }
 }
 
